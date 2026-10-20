@@ -30,6 +30,9 @@ html,body{margin:0}
 .linkbtn{background:none;border:0;padding:0;font:inherit;color:var(--link);text-decoration:underline;text-underline-offset:3px;cursor:pointer}
 .linkbtn:disabled{color:var(--fg3);text-decoration:none;cursor:default}
 .foot .linkbtn{font-size:inherit}
+.invite-box{background:var(--soft);border-radius:18px;padding:14px 16px;margin-top:16px;display:grid;gap:8px}
+.invite-box p{margin:0}
+.invite-text{font-weight:600;user-select:all;overflow-wrap:anywhere}
 </style>
 '''
 s = ('<!doctype html>\n<html lang="ru">\n<head>\n<meta charset="utf-8">\n'
@@ -95,6 +98,138 @@ rep("<p>Все разделы и гайды одним файлом guides.json,
 rep("<h2 class=\"h2\">Загрузить из файла</h2><p>Добавит гайды и разделы из guides.json. Если гайд с таким же идентификатором уже есть, он заменится.</p>",
     "<h2 class=\"h2\">Загрузить из файла</h2><p>Добавит гайды, разделы, города и почты из guides.json. Если гайд или город с таким же идентификатором уже есть, он заменится.</p>")
 
+EDITORS_JS = r'''
+  /* ---------- редакторы ---------- */
+  const ED = { list: null, loading: false, err: '', invite: null, confirm: null };
+  const siteUrl = () => location.origin + location.pathname;
+  const inviteText = (email, code) => 'Вас добавили в редакторы Гайдбука «Квиз, плиз!». Откройте ' + siteUrl() + ', войдите с почтой ' + email + ', введите код приглашения ' + code + ' и придумайте пароль.';
+  function edErr(e) {
+    const m = String((e && e.body && (e.body.message || e.body.msg)) || (e && e.message) || '');
+    if (/bad_email/.test(m)) return 'Не похоже на почту.';
+    if (/\bself\b/.test(m)) return 'Себя убрать или сбросить нельзя.';
+    if (/not_editor/.test(m) || (e && e.code === 'not_granted')) return 'Это может только редактор. Обновите страницу и войдите снова.';
+    if (e && e.code === 'unavailable') return 'Нет связи с базой. Проверьте интернет и попробуйте ещё раз.';
+    return 'Не получилось. Попробуйте ещё раз.';
+  }
+  function viewEditors() {
+    if (!editorMode()) return notFound('Раздел для отдела', 'Редакторами управляют только редакторы.');
+    if (!sb) return notFound('Редакторы', 'Управлять редакторами можно на опубликованном сайте.');
+    return '<div class="page narrow">' + topbar('dept', 'Отдел франшиз') +
+      '<div class="g-head"><h1 class="display sm">Редакторы</h1><p class="lede">Редакторы правят гайды, разделы и доступы городов. Добавьте почту коллеги, и сайт выдаст код приглашения. Коллега откроет сайт, войдёт с этой почтой, введёт код и сам придумает пароль.</p></div>' +
+      '<section class="panel"><h2 class="h2">Добавить редактора</h2><form class="login-box" id="edAddForm" novalidate>' +
+      '<div class="field"><label for="ed-email">Почта</label><input class="inp" id="ed-email" type="email" inputmode="email" autocomplete="off" placeholder="name@quizplease.ru"></div>' +
+      '<p class="err" id="ed-err" hidden></p><button class="btn small" type="submit" id="edAddBtn">Добавить и получить код</button></form>' +
+      '<div id="edInvite">' + inviteHTML() + '</div></section>' +
+      '<section class="panel"><h2 class="h2">Кто редактирует</h2><div id="edList">' + edListHTML() + '</div></section>' +
+      '<section class="panel"><h2 class="h2">Сменить свой пароль</h2><form class="login-box" id="edPwForm" novalidate>' +
+      '<input type="email" name="username" autocomplete="username" value="' + esc(loginEmail) + '" hidden>' +
+      '<div class="field"><label for="ed-pw1">Новый пароль</label><input class="inp" id="ed-pw1" type="password" autocomplete="new-password" placeholder="Не короче 6 символов"></div>' +
+      '<div class="field"><label for="ed-pw2">Пароль ещё раз</label><input class="inp" id="ed-pw2" type="password" autocomplete="new-password"></div>' +
+      '<p class="err" id="ed-pw-err" hidden></p><button class="btn small ghost" type="submit">Сохранить пароль</button></form></section></div>';
+  }
+  function inviteHTML() {
+    const iv = ED.invite; if (!iv) return '';
+    return '<div class="invite-box"><p><b>' + esc(iv.title) + '</b></p>' + (iv.note ? '<p class="err">' + esc(iv.note) + '</p>' : '') +
+      '<p class="invite-text" id="edInviteText">' + esc(inviteText(iv.email, iv.code)) + '</p>' +
+      '<div class="btn-row"><button class="btn small" type="button" data-ed="copyinvite">Скопировать приглашение</button></div></div>';
+  }
+  function edListHTML() {
+    if (ED.err) return '<p class="err">' + esc(ED.err) + '</p>';
+    if (!ED.list) return '<p class="muted">Загружаю…</p>';
+    if (!ED.list.length) return '<p class="muted">Редакторов пока нет.</p>';
+    const meMail = String(loginEmail || '').toLowerCase();
+    return ED.list.map(e => {
+      const me = e.email === meMail, active = !!e.user_id;
+      const pill = active ? '<span class="pill ok">Входит по паролю</span>' : '<span class="pill warn">Ждёт первого входа</span>';
+      const conf = ED.confirm && ED.confirm.email === e.email ? ED.confirm.kind : '';
+      let actions;
+      if (me) actions = '<span class="muted">Это вы</span>';
+      else if (conf === 'del') actions = '<span class="confirm">Убрать ' + esc(e.email) + ' из редакторов? <button class="btn danger small" type="button" data-ed="delyes">Да, убрать</button><button class="btn ghost small" type="button" data-ed="no">Нет</button></span>';
+      else if (conf === 'reset') actions = '<span class="confirm">' + (active ? 'Старый пароль перестанет работать, коллега создаст новый по коду. ' : '') + 'Выдать новый код? <button class="btn small" type="button" data-ed="resetyes">Да, выдать</button><button class="btn ghost small" type="button" data-ed="no">Нет</button></span>';
+      else actions = (!active && e.invite_code ? '<button class="btn small" type="button" data-ed="showinvite">Приглашение</button>' : '') +
+        '<button class="btn ghost small" type="button" data-ed="reset">' + (active ? 'Сбросить пароль' : 'Новый код') + '</button>' +
+        '<button class="btn danger small" type="button" data-ed="del">Убрать</button>';
+      return '<div class="acc-card" data-edmail="' + esc(e.email) + '"><div class="acc-head"><span class="acc-name">' + esc(e.email) + '</span>' + pill + '</div>' +
+        (!active && e.invite_code ? '<span class="muted acc-meta">Код приглашения: <b>' + esc(e.invite_code) + '</b></span>' : '') +
+        '<div class="btn-row">' + actions + '</div></div>';
+    }).join('');
+  }
+  function renderEdList() { const b = $('#edList'); if (b) b.innerHTML = edListHTML(); }
+  function renderInvite() { const b = $('#edInvite'); if (b) b.innerHTML = inviteHTML(); }
+  async function loadEditors() {
+    if (!sb || ED.loading) return;
+    ED.loading = true;
+    try { ED.list = await sb.rows('editors', 'select=email,user_id,invite_code,added_at&order=added_at.asc'); ED.err = ''; }
+    catch (e) { ED.err = edErr(e); ED.list = null; }
+    ED.loading = false; renderEdList();
+  }
+  document.addEventListener('submit', async ev => {
+    const f = ev.target;
+    if (f.id === 'edAddForm') {
+      ev.preventDefault();
+      const inp = $('#ed-email'), er = $('#ed-err'), btn = $('#edAddBtn');
+      const showErr = m => { er.textContent = m; er.hidden = !m; };
+      const v = String(inp.value || '').trim().toLowerCase();
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v)) { showErr('Похоже, в почте опечатка.'); inp.focus(); return; }
+      showErr(''); btn.disabled = true;
+      try {
+        const r = await sb.rpc('add_editor', { addr: v });
+        if (r && r.status === 'active') showErr('Эта почта уже в редакторах и входит по паролю.');
+        else { ED.invite = { email: v, code: r.code, title: 'Готово. Отправьте коллеге это приглашение:' }; inp.value = ''; renderInvite(); loadEditors(); }
+      } catch (e) { showErr(edErr(e)); }
+      btn.disabled = false;
+    } else if (f.id === 'edPwForm') {
+      ev.preventDefault();
+      const p1 = String($('#ed-pw1').value || ''), p2 = String($('#ed-pw2').value || ''), er = $('#ed-pw-err');
+      const showErr = m => { er.textContent = m; er.hidden = !m; };
+      if (p1.length < 6) return showErr('Пароль должен быть не короче 6 символов.');
+      if (p1 !== p2) return showErr('Пароли не совпадают.');
+      showErr('');
+      try { await sb.auth.updatePassword(p1); $('#ed-pw1').value = ''; $('#ed-pw2').value = ''; toast('Пароль сохранён'); }
+      catch (e) {
+        const ec = e && e.body && (e.body.error_code || e.body.code);
+        showErr(ec === 'same_password' ? 'Это ваш текущий пароль. Придумайте другой.' : ec === 'weak_password' ? 'Пароль слишком простой.' : edErr(e));
+      }
+    }
+  });
+  document.addEventListener('click', async ev => {
+    const b = ev.target.closest && ev.target.closest('[data-ed]'); if (!b) return;
+    const card = b.closest('[data-edmail]'), email = card ? card.dataset.edmail : '', act = b.dataset.ed;
+    if (act === 'copyinvite') { const t = $('#edInviteText'); copyText(t ? t.textContent : '').then(ok => toast(ok ? 'Приглашение скопировано' : 'Не получилось скопировать')); return; }
+    if (act === 'showinvite') {
+      const e = (ED.list || []).find(x => x.email === email);
+      if (e && e.invite_code) { ED.invite = { email, code: e.invite_code, title: 'Приглашение для ' + email + ':' }; renderInvite(); const box = $('#edInvite'); if (box) box.scrollIntoView({ block: 'center', behavior: reduceMotion ? 'auto' : 'smooth' }); }
+      return;
+    }
+    if (act === 'del' || act === 'reset') { ED.confirm = { email, kind: act }; renderEdList(); return; }
+    if (act === 'no') { ED.confirm = null; renderEdList(); return; }
+    if (act === 'delyes') {
+      b.disabled = true;
+      try { await sb.rpc('remove_editor', { addr: email }); toast(email + ' больше не редактор'); if (ED.invite && ED.invite.email === email) { ED.invite = null; renderInvite(); } }
+      catch (e) { toast(edErr(e)); }
+      ED.confirm = null; loadEditors(); return;
+    }
+    if (act === 'resetyes') {
+      b.disabled = true;
+      try {
+        const r = await sb.rpc('reset_editor', { addr: email });
+        ED.invite = { email, code: r.code, title: 'Новый код готов. Отправьте коллеге это приглашение:', note: r.deleted ? '' : 'Старый аккаунт не удалился сам. Откройте в Supabase Authentication → Users, удалите ' + email + ' и только потом отправляйте приглашение.' };
+        renderInvite();
+      } catch (e) { toast(edErr(e)); }
+      ED.confirm = null; loadEditors(); return;
+    }
+  });
+'''
+
+# ---------- маршрут «Редакторы» ----------
+rep("      navA('data', '<span class=\"eyebrow\">Файлы</span>",
+    "      navA('editors', '<span class=\"eyebrow\">Команда</span><span class=\"dcard-title\">Редакторы</span><p>Кто правит гайды: приглашения, коды и пароли.</p>', 'dcard press') +\n      navA('data', '<span class=\"eyebrow\">Файлы</span>")
+rep("'structure', 'access'].indexOf(t)", "'structure', 'access', 'editors'].indexOf(t)")
+rep("(v === 'dept' || v === 'attention' || v === 'data' || v === 'access') ? 'dept'", "(v === 'dept' || v === 'attention' || v === 'data' || v === 'access' || v === 'editors') ? 'dept'")
+rep("      case 'data': html = viewData(); break;", "      case 'data': html = viewData(); break;\n      case 'editors': html = viewEditors(); break;")
+rep("    if (r.view === 'data') { bindData(); fillAssetUsage(); }", "    if (r.view === 'data') { bindData(); fillAssetUsage(); }\n    if (r.view === 'editors') loadEditors();")
+rep("(v === 'access' && $('#accList'))) {", "(v === 'access' && $('#accList')) || (v === 'editors' && $('#edList'))) {")
+
 # ---------- текст на странице доступов ----------
 rep("В опубликованной версии они будут входить по коду из письма, а город с закрытым доступом сразу перестанет видеть гайды. Сейчас это прототип: список хранится здесь, сам вход заработает после публикации.",
     "Сотрудник входит по своей почте из этого списка и видит только выбранные разделы. Если закрыть доступ городу, его сотрудники перестанут видеть гайды при следующем входе или обновлении страницы.")
@@ -125,18 +260,32 @@ LOGIN_JS = r'''
         '<div class="field"><label for="lg-email">Почта</label><input class="inp" id="lg-email" type="email" inputmode="email" autocomplete="email" placeholder="name@example.ru" value="' + esc(L.email) + '"></div>' +
         err + '<button class="btn" type="submit"' + (L.busy ? ' disabled' : '') + '>' + (L.busy ? 'Проверяю…' : 'Войти') + '</button></form>');
       const i = $('#lg-email'); if (i) i.focus();
+    } else if (L.step === 'invite') {
+      loginShell('Вход для отдела', '<form class="panel login-box" id="inviteForm" novalidate><h2 class="h2">Вас пригласили в редакторы</h2>' +
+        '<p>Почта <b>' + esc(L.email) + '</b> добавлена в редакторы. Введите код приглашения, который вам прислали, и придумайте пароль. Дальше будете входить с этой почтой и паролем.</p>' +
+        '<input type="email" name="username" autocomplete="username" value="' + esc(L.email) + '" hidden>' +
+        '<div class="field"><label for="lg-code">Код приглашения</label><input class="inp" id="lg-code" type="text" autocomplete="off" autocapitalize="characters" spellcheck="false" maxlength="16" placeholder="Например: 7F3A9C21"></div>' +
+        '<div class="field"><label for="lg-new">Новый пароль</label><input class="inp" id="lg-new" type="password" autocomplete="new-password" placeholder="Не короче 6 символов"></div>' +
+        '<div class="field"><label for="lg-new2">Пароль ещё раз</label><input class="inp" id="lg-new2" type="password" autocomplete="new-password"></div>' +
+        err + '<button class="btn" type="submit"' + (L.busy ? ' disabled' : '') + '>' + (L.busy ? 'Сохраняю…' : 'Создать пароль и войти') + '</button>' +
+        '<div class="login-links"><button class="linkbtn" type="button" id="lgOther">Другая почта</button></div></form>');
+      const i = $('#lg-code'); if (i) i.focus();
     } else {
       loginShell('Вход для отдела', '<form class="panel login-box" id="pwForm" novalidate><h2 class="h2">Пароль редактора</h2>' +
         '<p>Почта <b>' + esc(L.email) + '</b> есть в списке редакторов, поэтому нужен пароль.</p>' +
         '<input type="email" name="username" autocomplete="username" value="' + esc(L.email) + '" hidden>' +
         '<div class="field"><label for="lg-pw">Пароль</label><input class="inp" id="lg-pw" type="password" autocomplete="current-password"></div>' +
         err + '<button class="btn" type="submit"' + (L.busy ? ' disabled' : '') + '>' + (L.busy ? 'Проверяю…' : 'Войти') + '</button>' +
+        '<p class="muted">Забыли пароль? Попросите другого редактора выдать вам новый код в разделе Отдел → Редакторы.</p>' +
         '<div class="login-links"><button class="linkbtn" type="button" id="lgOther">Другая почта</button></div></form>');
       const i = $('#lg-pw'); if (i) i.focus();
     }
   }
   function loginError(e) {
     const c = e && e.code, b = e && e.body, ec = b && (b.error_code || b.code);
+    if (ec === 'email_not_confirmed') return 'Аккаунт не подтверждён. В настройках входа Supabase выключите Confirm email или попросите редактора выдать вам новый код.';
+    if (ec === 'weak_password') return 'Пароль слишком простой. Нужно не меньше 6 символов.';
+    if (ec === 'signup_disabled') return 'В Supabase выключена регистрация. В настройках входа включите Allow new users to sign up.';
     if (ec === 'invalid_credentials' || (e && e.status === 400)) return 'Пароль не подошёл.';
     if (c === 'rate_limited') return 'Слишком много попыток. Подождите минуту и попробуйте снова.';
     if (c === 'unavailable') return 'Нет связи с базой. Проверьте интернет и попробуйте ещё раз.';
@@ -158,8 +307,34 @@ LOGIN_JS = r'''
       try { kind = await sb.auth.kind(v); } catch (e) { LOGIN.busy = false; LOGIN.err = loginError(e); renderLogin(); return; }
       LOGIN.busy = false;
       if (kind === 'editor') { LOGIN.step = 'password'; renderLogin(); return; }
+      if (kind === 'editor_new') { LOGIN.step = 'invite'; renderLogin(); return; }
       if (kind === 'city') { storeCity(v); boot(); return; }
       LOGIN.err = kind === 'closed' ? CLOSED : NO_EMAIL; renderLogin();
+    } else if (f.id === 'inviteForm') {
+      ev.preventDefault(); if (LOGIN.busy) return;
+      const code = String($('#lg-code').value || '').replace(/\s+/g, '').toUpperCase();
+      const p1 = String($('#lg-new').value || ''), p2 = String($('#lg-new2').value || '');
+      const stop = m => { LOGIN.busy = false; LOGIN.err = m; renderLogin(); };
+      if (!code) return stop('Введите код приглашения.');
+      if (p1.length < 6) return stop('Пароль должен быть не короче 6 символов.');
+      if (p1 !== p2) return stop('Пароли не совпадают.');
+      LOGIN.err = ''; LOGIN.busy = true; renderLogin();
+      try {
+        const ok = await sb.rpc('check_invite', { addr: LOGIN.email, code });
+        if (!ok) return stop('Код не подошёл. Проверьте его или попросите редактора выдать новый.');
+        let sess = null;
+        try { sess = await sb.auth.signUp(LOGIN.email, p1); }
+        catch (e) {
+          const ec = e && e.body && (e.body.error_code || e.body.code);
+          if (ec !== 'user_already_exists' && ec !== 'email_exists') throw e;
+          try { sess = await sb.auth.signInPassword(LOGIN.email, p1); }
+          catch (e2) { return stop('Для этой почты уже есть аккаунт со старым паролем. Попросите редактора нажать «Новый код» в разделе Отдел → Редакторы.'); }
+        }
+        if (!sess) return stop('Пароль создан, но Supabase ждёт подтверждения почты. В настройках входа Supabase выключите Confirm email, потом попросите новый код.');
+        const claimed = await sb.rpc('claim_editor', { code });
+        if (!claimed) { await sb.auth.signOut(); return stop('Не получилось подтвердить приглашение. Попросите редактора выдать новый код.'); }
+        LOGIN.busy = false; storeCity(''); boot();
+      } catch (e) { stop(loginError(e)); }
     } else if (f.id === 'pwForm') {
       ev.preventDefault(); if (LOGIN.busy) return;
       const pw = String($('#lg-pw').value || '');
@@ -216,7 +391,7 @@ LOGIN_JS = r'''
     LOGIN.step = 'email'; renderLogin();
   }
 '''
-rep("  /* ---------- start ---------- */\n", LOGIN_JS + "\n  /* ---------- start ---------- */\n")
+rep("  /* ---------- start ---------- */\n", LOGIN_JS + EDITORS_JS + "\n  /* ---------- start ---------- */\n")
 
 rep('''  async function init() {
     state.route = parseToken(location.hash);

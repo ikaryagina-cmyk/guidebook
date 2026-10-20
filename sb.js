@@ -94,6 +94,12 @@
         const s = await raw('/auth/v1/token?grant_type=password', { method: 'POST', auth: false, body: { email, password } });
         return saveSession(s);
       },
+      // Новый редактор создаёт себе пароль. Если в Supabase включено подтверждение почты, сессии не будет.
+      async signUp(email, password) {
+        const s = await raw('/auth/v1/signup', { method: 'POST', auth: false, body: { email, password, data: {} } });
+        return s && s.access_token ? saveSession(s) : null;
+      },
+      async updatePassword(password) { return call('/auth/v1/user', { method: 'PUT', body: { password } }); },
       async signOut() {
         try { if (session) await raw('/auth/v1/logout', { method: 'POST' }); } catch (e) { }
         saveSession(null);
@@ -104,6 +110,7 @@
     return {
       auth,
       select: (table, cols) => call('/rest/v1/' + table + '?select=' + enc(cols || 'id,data') + '&order=id'),
+      rows: (table, query) => call('/rest/v1/' + table + '?' + query),
       rpc: (fn, args) => call('/rest/v1/rpc/' + fn, { method: 'POST', body: args || {} }),
       upsert: (table, rows) => call('/rest/v1/' + table + '?on_conflict=id', { method: 'POST', body: rows, headers: { Prefer: 'resolution=merge-duplicates,return=minimal' } }),
       remove: (table, id) => call('/rest/v1/' + table + '?id=eq.' + enc(id), { method: 'DELETE', headers: { Prefer: 'return=minimal' } }),

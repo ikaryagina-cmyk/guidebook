@@ -18,11 +18,24 @@ create table if not exists public.access (
   data jsonb not null default '{}'::jsonb,
   updated_at timestamptz not null default now()
 );
--- Кто редактирует базу (отдел франшиз)
+-- Кто редактирует базу (отдел франшиз). user_id — аккаунт, который принял приглашение;
+-- invite_code — код приглашения, пока редактор ещё не входил.
 create table if not exists public.editors (
   email text primary key,
   added_at timestamptz not null default now()
 );
+alter table public.editors add column if not exists user_id uuid;
+alter table public.editors add column if not exists invite_code text;
+
+-- Почты редакторов храним в нижнем регистре
+update public.editors e set email = lower(trim(e.email))
+  where e.email <> lower(trim(e.email))
+    and not exists (select 1 from public.editors d where d.email = lower(trim(e.email)));
+
+-- Редакторы, заведённые вручную до приглашений, привязываются к своим аккаунтам по почте
+update public.editors e set user_id = u.id
+  from auth.users u
+  where e.user_id is null and e.invite_code is null and lower(u.email) = lower(e.email);
 
 create or replace function public.touch_updated_at() returns trigger
 language plpgsql as $$
@@ -36,7 +49,7 @@ drop trigger if exists access_touch on public.access;
 create trigger access_touch before update on public.access for each row execute function public.touch_updated_at();
 
 -- ---------- кто вошёл ----------
--- Редакторы входят по почте и паролю (аккаунт заводится в Authentication → Users).
+-- Редакторы входят по почте и паролю. Новый редактор сам создаёт пароль по коду приглашения.
 create or replace function public.my_email() returns text
 language sql stable set search_path = public as $$
   select lower(coalesce(auth.jwt() ->> 'email', ''))
@@ -44,8 +57,92 @@ $$;
 
 create or replace function public.is_editor() returns boolean
 language sql stable security definer set search_path = public as $$
-  select public.my_email() <> '' and exists (select 1 from public.editors e where lower(e.email) = public.my_email())
+  select auth.uid() is not null and public.my_email() <> '' and exists (
+    select 1 from public.editors e where e.user_id = auth.uid() and lower(e.email) = public.my_email())
 $$;
+
+-- Статус редактора: active — входит по паролю, pending — ждёт первого входа, null — не редактор
+create or replace function public.editor_status(addr text) returns text
+language sql stable security definer set search_path = public as $$
+  select case
+    when e.user_id is not null and exists (select 1 from auth.users u where u.id = e.user_id) then 'active'
+    else 'pending' end
+  from public.editors e
+  where lower(e.email) = lower(trim(coalesce(addr, '')))
+  limit 1
+$$;
+
+create or replace function public.new_invite_code() returns text
+language sql volatile set search_path = public as $$
+  select upper(substr(replace(gen_random_uuid()::text, '-', ''), 1, 8))
+$$;
+
+-- Подходит ли код приглашения (проверяется до создания пароля)
+create or replace function public.check_invite(addr text, code text) returns boolean
+language sql stable security definer set search_path = public as $$
+  select coalesce(public.editor_status(addr) = 'pending', false) and exists (
+    select 1 from public.editors e
+    where lower(e.email) = lower(trim(addr)) and e.invite_code is not null
+      and e.invite_code = upper(trim(coalesce(code, ''))))
+$$;
+
+-- Новый редактор после создания пароля привязывает аккаунт по коду
+create or replace function public.claim_editor(code text) returns boolean
+language plpgsql volatile security definer set search_path = public as $$
+declare n int;
+begin
+  if auth.uid() is null then return false; end if;
+  update public.editors e set user_id = auth.uid(), invite_code = null
+   where lower(e.email) = public.my_email()
+     and e.invite_code is not null and e.invite_code = upper(trim(coalesce(code, '')))
+     and (e.user_id is null or not exists (select 1 from auth.users u where u.id = e.user_id));
+  get diagnostics n = row_count;
+  return n > 0;
+end $$;
+
+-- Добавить редактора: возвращает код приглашения
+create or replace function public.add_editor(addr text) returns jsonb
+language plpgsql volatile security definer set search_path = public as $$
+declare a text := lower(trim(coalesce(addr, ''))); c text;
+begin
+  if not public.is_editor() then raise exception 'not_editor' using errcode = '42501'; end if;
+  if a !~ '^[^@[:space:]]+@[^@[:space:]]+[.][^@[:space:]]+$' then raise exception 'bad_email' using errcode = '22023'; end if;
+  if public.editor_status(a) = 'active' then return jsonb_build_object('status', 'active'); end if;
+  c := public.new_invite_code();
+  insert into public.editors (email, invite_code) values (a, c)
+    on conflict (email) do update set invite_code = excluded.invite_code, user_id = null;
+  return jsonb_build_object('status', 'invited', 'code', c);
+end $$;
+
+-- Новый код для редактора (забыл пароль или код): старый аккаунт удаляется, чтобы создать пароль заново
+create or replace function public.reset_editor(addr text) returns jsonb
+language plpgsql volatile security definer set search_path = public as $$
+declare a text := lower(trim(coalesce(addr, ''))); c text; gone boolean := true;
+begin
+  if not public.is_editor() then raise exception 'not_editor' using errcode = '42501'; end if;
+  if a = public.my_email() then raise exception 'self' using errcode = '22023'; end if;
+  if not exists (select 1 from public.editors e where lower(e.email) = a) then raise exception 'not_found' using errcode = '22023'; end if;
+  c := public.new_invite_code();
+  update public.editors e set user_id = null, invite_code = c where lower(e.email) = a;
+  begin
+    delete from auth.users u where lower(u.email) = a;
+  exception when others then
+    gone := false;
+  end;
+  if gone then gone := not exists (select 1 from auth.users u where lower(u.email) = a); end if;
+  return jsonb_build_object('code', c, 'deleted', gone);
+end $$;
+
+-- Убрать редактора (себя убрать нельзя)
+create or replace function public.remove_editor(addr text) returns boolean
+language plpgsql volatile security definer set search_path = public as $$
+declare a text := lower(trim(coalesce(addr, '')));
+begin
+  if not public.is_editor() then raise exception 'not_editor' using errcode = '42501'; end if;
+  if a = public.my_email() then raise exception 'self' using errcode = '22023'; end if;
+  delete from public.editors e where lower(e.email) = a;
+  return found;
+end $$;
 
 drop function if exists public.access_people(text);
 
@@ -83,12 +180,14 @@ language sql stable security definer set search_path = public as $$
   end
 $$;
 
--- Как пускать эту почту: editor — спросить пароль, city — пустить, closed — город закрыт, none — почты нет в списке
+-- Как пускать эту почту: editor — спросить пароль, editor_new — код приглашения и новый пароль,
+-- city — пустить, closed — город закрыт, none — почты нет в списке
 create or replace function public.login_kind(addr text) returns text
 language sql stable security definer set search_path = public as $$
   select case
     when coalesce(trim(addr), '') = '' then 'none'
-    when exists (select 1 from public.editors e where lower(e.email) = lower(trim(addr))) then 'editor'
+    when public.editor_status(addr) = 'active' then 'editor'
+    when public.editor_status(addr) = 'pending' then 'editor_new'
     when public.access_of(addr) is not null then 'city'
     when exists (select 1 from public.access_people(addr, false)) then 'closed'
     else 'none'
@@ -163,6 +262,10 @@ grant select, insert, update, delete on public.guides, public.config, public.acc
 revoke execute on function public.access_people(text, boolean) from public, anon, authenticated;
 revoke execute on function public.access_of(text) from public, anon, authenticated;
 revoke execute on function public.whoami() from public, anon;
+revoke execute on function public.editor_status(text), public.new_invite_code() from public, anon, authenticated;
+revoke execute on function public.claim_editor(text), public.add_editor(text), public.reset_editor(text), public.remove_editor(text) from public, anon;
+grant execute on function public.check_invite(text, text) to anon, authenticated;
+grant execute on function public.claim_editor(text), public.add_editor(text), public.reset_editor(text), public.remove_editor(text) to authenticated;
 grant execute on function public.login_kind(text), public.guides_for(text), public.config_for(text) to anon, authenticated;
 grant execute on function public.my_email(), public.is_editor(), public.whoami() to authenticated;
 
