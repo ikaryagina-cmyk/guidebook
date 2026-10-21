@@ -405,5 +405,182 @@ rep('''  async function init() {
     render();
     const c = window.claude;''')
 
+# ---------- тема: светлая и тёмная ----------
+rep('<meta name="referrer" content="strict-origin-when-cross-origin">\n',
+    '<meta name="referrer" content="strict-origin-when-cross-origin">\n'
+    "<script>try{var t=localStorage.getItem('gb-theme');if(t==='dark'||t==='light')document.documentElement.setAttribute('data-theme',t)}catch(e){}</script>\n")
+
+TOC_CSS = """<style>
+/* тема */
+.home-theme{margin-left:auto}
+:root[data-theme="dark"] .hero{background-position:center 12%}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]) .hero{background-position:center 12%}}
+/* содержание гайда */
+.g-col{display:grid;gap:28px;min-width:0}
+.gtoc{display:grid;align-content:start;gap:4px}
+.gtoc-head{display:flex;align-items:center;justify-content:space-between;gap:8px;min-height:48px;padding-left:10px}
+.gtoc-list,.gtoc-sub{list-style:none;margin:0;padding:0;display:grid;gap:2px}
+.gtoc-sub{margin:2px 0 8px 22px;padding-left:12px;border-left:1.5px solid var(--line)}
+.gtoc-a{display:flex;gap:10px;align-items:flex-start;width:100%;text-align:left;border:0;background:transparent;color:var(--fg2);font:700 15px/1.3 var(--font);padding:8px 10px;border-radius:14px;cursor:pointer}
+.gtoc-a:hover{color:var(--fg);background:var(--soft)}
+.gtoc-a.on{color:var(--fg);background:var(--card)}
+.gtoc-a.sub{font:600 14px/1.3 var(--font);padding:6px 10px}
+.gtoc-a.sub.on{color:var(--link);background:transparent}
+.gtoc-n{flex:none;min-width:22px;height:22px;margin-top:-1px;border-radius:999px;display:inline-grid;place-items:center;font:800 12px/1 var(--font);background:var(--soft);color:var(--fg2)}
+.gtoc-a.on .gtoc-n{background:var(--pink);color:var(--on-pink)}
+.gtoc-top{display:inline-flex;align-items:center;gap:8px;justify-self:start;margin-top:10px;padding:8px 10px;border:0;background:transparent;color:var(--fg2);font:700 14px/1 var(--font);cursor:pointer;border-radius:12px}
+.gtoc-top:hover{color:var(--fg)}
+.gtoc-top svg.i{width:18px;height:18px}
+.toc-fab{position:fixed;right:16px;bottom:calc(env(safe-area-inset-bottom,0px) + 92px);z-index:41;display:inline-flex;align-items:center;gap:8px;height:46px;padding:0 18px 0 14px;border-radius:999px;border:0;background:var(--card);color:var(--fg);font:800 14px/1 var(--font);box-shadow:var(--shadow-md);cursor:pointer}
+.toc-fab svg.i{width:20px;height:20px}
+.gtoc-back{position:fixed;inset:0;z-index:65;background:rgba(0,0,0,.45)}
+html.toc-lock{overflow:hidden}
+@media (max-width:1179.98px){
+  .gtoc{position:fixed;z-index:70;top:0;bottom:0;left:0;width:min(360px,88vw);overflow-y:auto;overscroll-behavior:contain;background:var(--bg);padding:calc(env(safe-area-inset-top,0px) + 12px) 12px calc(env(safe-area-inset-bottom,0px) + 28px) 12px;box-shadow:var(--shadow-md);border-radius:0 24px 24px 0;transform:translateX(-104%);visibility:hidden;transition:transform .28s var(--ease),visibility 0s linear .28s}
+  .gtoc.open{transform:none;visibility:visible;transition:transform .28s var(--ease)}
+}
+@media (min-width:1180px){
+  .page.narrow.has-toc{max-width:1144px;grid-template-columns:260px minmax(0,760px);column-gap:60px;justify-content:center;align-items:start}
+  .gtoc{position:sticky;top:20px;max-height:calc(100vh - 40px);overflow-y:auto;overscroll-behavior:contain;scrollbar-width:thin;padding-bottom:16px}
+  .gtoc-x,.toc-fab,.gtoc-back{display:none!important}
+  .has-toc nav.toc{display:none}
+  .gtoc-list > li:not(.open) > .gtoc-sub{display:none}
+}
+@media print{.gtoc,.toc-fab,.gtoc-back{display:none!important}}
+</style>
+"""
+rep('</head>', TOC_CSS + '</head>')
+
+rep("    eye: ic(",
+    "    sun: ic('<circle cx=\"12\" cy=\"12\" r=\"4\"/><path d=\"M12 2.5v2M12 19.5v2M4.6 4.6 6 6M18 18l1.4 1.4M2.5 12h2M19.5 12h2M4.6 19.4 6 18M18 6l1.4-1.4\"/>'),\n"
+    "    moon: ic('<path d=\"M20.5 14.1A8.5 8.5 0 1 1 9.9 3.5a6.6 6.6 0 0 0 10.6 10.6z\"/>'),\n"
+    "    list: ic('<path d=\"M9 6h11M9 12h11M9 18h11\"/><path d=\"M4.5 6h.01M4.5 12h.01M4.5 18h.01\" stroke-width=\"3\"/>'),\n"
+    "    eye: ic(")
+
+# заголовки второго и третьего уровня для содержания
+rep("if (h.tagName === 'H2') toc.push({ id, text: h.textContent }); });",
+    "toc.push({ id, text: h.textContent, lvl: h.tagName === 'H2' ? 2 : 3 }); });")
+
+TOC_JS = r"""  /* ---------- тема ---------- */
+  function themeNow() {
+    const a = document.documentElement.getAttribute('data-theme');
+    if (a === 'dark' || a === 'light') return a;
+    return window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+  }
+  function themeLabel() { return themeNow() === 'dark' ? 'Включить светлую тему' : 'Включить тёмную тему'; }
+  function themeBtn(cls) {
+    return '<button class="circle press' + (cls ? ' ' + cls : '') + '" type="button" data-theme-toggle aria-label="' + themeLabel() + '" title="' + themeLabel() + '">' + (themeNow() === 'dark' ? ICON.sun : ICON.moon) + '</button>';
+  }
+  function syncThemeBtns() {
+    $$('[data-theme-toggle]').forEach(b => { b.innerHTML = themeNow() === 'dark' ? ICON.sun : ICON.moon; b.setAttribute('aria-label', themeLabel()); b.title = themeLabel(); });
+  }
+  function toggleTheme() {
+    const t = themeNow() === 'dark' ? 'light' : 'dark';
+    document.documentElement.setAttribute('data-theme', t);
+    try { localStorage.setItem('gb-theme', t); } catch (e) { }
+    syncThemeBtns();
+  }
+  try { matchMedia('(prefers-color-scheme: dark)').addEventListener('change', syncThemeBtns); } catch (e) { }
+
+  /* ---------- содержание гайда ---------- */
+  function tocTree(flat) {
+    const out = []; const hasH2 = flat.some(t => t.lvl === 2);
+    flat.forEach(t => {
+      if (!hasH2 || t.lvl === 2) out.push({ id: t.id, text: t.text, subs: [] });
+      else if (out.length) out[out.length - 1].subs.push({ id: t.id, text: t.text });
+    });
+    return out;
+  }
+  function tocAside(items) {
+    return '<aside class="gtoc" id="gtoc" aria-label="Содержание гайда"><div class="gtoc-head"><span class="eyebrow">Содержание</span>' +
+      '<button class="icon-btn gtoc-x" type="button" data-toc-close aria-label="Закрыть содержание">' + ICON.x + '</button></div><ol class="gtoc-list">' +
+      items.map((t, i) => '<li><button type="button" class="gtoc-a" data-toc="' + t.id + '"><span class="gtoc-n">' + (i + 1) + '</span><span>' + esc(t.text) + '</span></button>' +
+        (t.subs.length ? '<ol class="gtoc-sub">' + t.subs.map(x => '<li><button type="button" class="gtoc-a sub" data-toc="' + x.id + '">' + esc(x.text) + '</button></li>').join('') + '</ol>' : '') + '</li>').join('') +
+      '</ol><button type="button" class="gtoc-top" data-toc="top">' + ICON.up + 'К началу гайда</button></aside>';
+  }
+  function tocIsOpen() { const a = $('#gtoc'); return !!(a && a.classList.contains('open')); }
+  function openToc() {
+    const a = $('#gtoc'); if (!a) return;
+    a.classList.add('open'); document.documentElement.classList.add('toc-lock');
+    const bk = $('.gtoc-back'); if (bk) bk.hidden = false;
+    const f = $('[data-toc-open]'); if (f) f.setAttribute('aria-expanded', 'true');
+    const cur = a.querySelector('.gtoc-a.on') || a.querySelector('.gtoc-a');
+    setTimeout(() => { if (cur) { cur.focus({ preventScroll: true }); scrollTocTo(cur); } }, 40);
+  }
+  function closeToc(refocus) {
+    document.documentElement.classList.remove('toc-lock');
+    const bk = $('.gtoc-back'); if (bk) bk.hidden = true;
+    const a = $('#gtoc'); if (!a || !a.classList.contains('open')) return;
+    a.classList.remove('open');
+    const f = $('[data-toc-open]'); if (f) { f.setAttribute('aria-expanded', 'false'); if (refocus) f.focus({ preventScroll: true }); }
+  }
+  function scrollTocTo(b) {
+    const a = $('#gtoc'); if (!a || !b || a.scrollHeight <= a.clientHeight + 2) return;
+    const top = b.offsetTop - a.clientHeight / 3;
+    a.scrollTo({ top: Math.max(0, top) });
+  }
+  let tocPin = null, tocRaf = 0, tocLast = null;
+  function updateToc() {
+    tocRaf = 0;
+    const a = $('#gtoc'); if (!a || state.route.view !== 'guide') return;
+    const btns = $$('.gtoc-a', a); if (!btns.length) return;
+    const atBottom = scrollY + innerHeight >= document.documentElement.scrollHeight - 4;
+    let cur = null;
+    if (tocPin && (Date.now() - tocPin.t < 1200 || atBottom)) cur = tocPin.id;
+    else {
+      tocPin = null;
+      for (const b of btns) { const h = document.getElementById(b.dataset.toc); if (h && h.getBoundingClientRect().top <= 120) cur = b.dataset.toc; }
+    }
+    btns.forEach(b => { const on = b.dataset.toc === cur; b.classList.toggle('on', on); if (on) b.setAttribute('aria-current', 'true'); else b.removeAttribute('aria-current'); });
+    $$('.gtoc-list > li', a).forEach(li => li.classList.toggle('open', !!li.querySelector('.gtoc-a.on')));
+    const onb = a.querySelector('.gtoc-a.on');
+    if (onb && onb !== tocLast && !tocIsOpen()) scrollTocTo(onb);
+    tocLast = onb;
+  }
+  const queueToc = () => { if (!tocRaf) tocRaf = requestAnimationFrame(updateToc); };
+  window.addEventListener('scroll', queueToc, { passive: true });
+  window.addEventListener('resize', () => { if (tocIsOpen() && innerWidth >= 1180) closeToc(); queueToc(); });
+
+"""
+rep("  function viewGuide(id) {", TOC_JS + "  function viewGuide(id) {")
+
+# кнопка темы и страница гайда с содержанием
+rep("    const right = (ed ? navA('e-' + g.id, ICON.pen, 'circle press', ' aria-label=\"Редактировать гайд\"') : '') +",
+    "    const right = (ed ? navA('e-' + g.id, ICON.pen, 'circle press', ' aria-label=\"Редактировать гайд\"') : '') + themeBtn() +")
+rep("    let h = '<div class=\"page narrow\">' + topbar(s ? 's-' + s.id : 'sections', s ? esc(s.num + ' · ' + s.name) : '', right);",
+    "    const tocItems = tocTree(pr.toc); const hasToc = tocItems.length >= 2;\n"
+    "    let h = '<div class=\"page narrow' + (hasToc ? ' has-toc' : '') + '\">' + (hasToc ? tocAside(tocItems) : '') + '<div class=\"g-col\">' + topbar(s ? 's-' + s.id : 'sections', s ? esc(s.num + ' · ' + s.name) : '', right);")
+rep("    if (pr.toc.length >= 2) h += '<nav class=\"toc\" aria-label=\"Содержание\">' + pr.toc.map(",
+    "    if (hasToc) h += '<nav class=\"toc\" aria-label=\"Содержание\">' + tocItems.map(")
+rep("    return h + '</div>';\n  }\n  function viewSearch() {",
+    "    return h + '</div>' + (hasToc ? '<button class=\"toc-fab press\" type=\"button\" data-toc-open aria-controls=\"gtoc\" aria-expanded=\"false\">' + ICON.list + '<span>Содержание</span></button>' +\n"
+    "      '<div class=\"gtoc-back\" data-toc-close hidden></div>' : '') + '</div>';\n  }\n  function viewSearch() {")
+
+rep("<span class=\"eyebrow\">Гайдбук «Квиз, плиз!»</span><b>' + (name ? 'Привет, ' + esc(name) : 'Привет!') + '</b></div></div>'",
+    "<span class=\"eyebrow\">Гайдбук «Квиз, плиз!»</span><b>' + (name ? 'Привет, ' + esc(name) : 'Привет!') + '</b></div>' + themeBtn('home-theme') + '</div>'")
+rep("<span class=\"eyebrow\">Гайдбук «Квиз, плиз!»</span><b>' + esc(title) + '</b></div></div>'",
+    "<span class=\"eyebrow\">Гайдбук «Квиз, плиз!»</span><b>' + esc(title) + '</b></div>' + themeBtn('home-theme') + '</div>'")
+
+rep("    $('#main').innerHTML = html;\n    $('#readbar').hidden = r.view !== 'guide';",
+    "    document.documentElement.classList.remove('toc-lock'); tocLast = null;\n    $('#main').innerHTML = html;\n    $('#readbar').hidden = r.view !== 'guide';")
+rep("        updateReadbar();\n      }\n      if (state.highlight) {",
+    "        updateReadbar();\n      }\n      updateToc();\n      if (state.highlight) {")
+
+rep("  document.addEventListener('keydown', e => {\n",
+    "  document.addEventListener('keydown', e => {\n    if (e.key === 'Escape' && tocIsOpen()) { closeToc(true); return; }\n")
+rep("    const toc = t.closest('[data-toc]');\n    if (toc) { e.preventDefault(); const el = document.getElementById(toc.dataset.toc); if (el) el.scrollIntoView({ behavior: reduceMotion ? 'auto' : 'smooth', block: 'start' }); return; }",
+    "    if (t.closest('[data-theme-toggle]')) { toggleTheme(); return; }\n"
+    "    if (t.closest('[data-toc-open]')) { openToc(); return; }\n"
+    "    if (t.closest('[data-toc-close]')) { closeToc(true); return; }\n"
+    "    const toc = t.closest('[data-toc]');\n"
+    "    if (toc) {\n"
+    "      e.preventDefault(); const id = toc.dataset.toc; const smooth = reduceMotion ? 'auto' : 'smooth';\n"
+    "      closeToc();\n"
+    "      if (id === 'top') { tocPin = null; window.scrollTo({ top: 0, behavior: smooth }); return; }\n"
+    "      const el = document.getElementById(id);\n"
+    "      if (el) { tocPin = { id, t: Date.now() }; el.scrollIntoView({ behavior: smooth, block: 'start' }); updateToc(); }\n"
+    "      return;\n"
+    "    }")
+
 open(dst, 'w', encoding='utf-8').write(s)
 print('ok', len(s))
