@@ -1,0 +1,41 @@
+# Раз в день делает пару запросов к базе, чтобы Supabase не ставил проект на паузу
+# (на бесплатном тарифе он засыпает после недели без активности).
+# Адрес и публичный ключ берутся из config.js. Запустить вручную: Actions → «База не спит» → Run workflow.
+name: База не спит
+
+on:
+  schedule:
+    - cron: '23 5 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: write
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Запрос к базе
+        run: |
+          URL=$(sed -n "s/.*url: *'\([^']*\)'.*/\1/p" config.js)
+          KEY=$(sed -n "s/.*key: *'\([^']*\)'.*/\1/p" config.js)
+          ok=0
+          for fn in login_kind config_for; do
+            code=$(curl -sS -m 30 -o out.txt -w '%{http_code}' -X POST "$URL/rest/v1/rpc/$fn" \
+              -H "apikey: $KEY" -H 'Content-Type: application/json' -d '{"addr":"keepalive@example.com"}' || echo 000)
+            echo "$fn: HTTP $code $(head -c 200 out.txt)"
+            [ "$code" = 200 ] && ok=1
+          done
+          if [ "$ok" != 1 ]; then
+            echo "::error::База не ответила. Проверьте в Supabase, не стоит ли проект на паузе."
+            exit 1
+          fi
+
+      - name: Не даём GitHub отключить расписание
+        # GitHub выключает расписание в публичном репозитории после 60 дней без коммитов.
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh api -X PUT "repos/${GITHUB_REPOSITORY}/actions/workflows/keepalive.yml/enable" || true
