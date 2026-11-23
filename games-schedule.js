@@ -42,19 +42,19 @@ window.GamesSchedule = (() => {
     ?{key:'m'+info.date.toISOString().slice(0,7),label:'Тематические · '+months[info.date.getUTCMonth()]+' '+info.date.getUTCFullYear()}
     :weekLabel(info.date)):{key:'unknown',label:'Без даты'};
    if(group.key!==lastKey){
-    html+='<tr class="games-week-row"><th colspan="5" scope="rowgroup">'+esc(group.label)+'</th></tr>';
+    html+='<tr class="games-week-row"><th colspan="6" scope="rowgroup">'+esc(group.label)+'</th></tr>';
     lastKey=group.key;
    }
-   html+='<tr><td>'+esc(row.date)+'</td><td><strong>'+esc(row.name)+'</strong>'+(row.annotation?'<div class="games-note">'+esc(row.annotation)+'</div>':'')+'</td><td>'+esc(row.rating)+'</td><td>'+esc(row.score)+'</td><td>'+(link(row.guide)?'<a target="_blank" rel="noopener noreferrer" href="'+esc(link(row.guide))+'">Открыть ↗</a>':'—')+'</td></tr>';
+   html+='<tr><td>'+esc(row.date)+'</td><td><strong>'+esc(row.name)+'</strong>'+(row.annotation?'<div class="games-note">'+esc(row.annotation)+'</div>':'')+'</td><td>'+esc(row.rating)+'</td><td>'+esc(row.secretTheme||'—')+'</td><td>'+esc(row.score||'—')+'</td><td>'+(link(row.guide)?'<a target="_blank" rel="noopener noreferrer" href="'+esc(link(row.guide))+'">Открыть ↗</a>':'—')+'</td></tr>';
   });
   return html;
  }
  function render(){
   const el=root();if(!el)return;
-  const filtered=rows.filter(r=>r.group===tab&&[r.date,r.name,r.rating,r.score,r.annotation].some(v=>String(v||'').toLowerCase().includes(query.toLowerCase())));
+  const filtered=rows.filter(r=>r.group===tab&&[r.date,r.name,r.rating,r.score,r.secretTheme,r.annotation].some(v=>String(v||'').toLowerCase().includes(query.toLowerCase())));
   el.innerHTML='<div class="games-controls"><div class="games-tabs" role="tablist">'+tabs.map(([id,name])=>'<button type="button" role="tab" aria-selected="'+(id===tab)+'" data-games-tab="'+id+'">'+name+'</button>').join('')+'</div><input id="games-search" type="search" placeholder="Поиск по названию, номеру, дате" aria-label="Поиск игр" value="'+esc(query)+'"></div>'+
    (status==='loading'?'<p class="games-message">Загружаю расписание…</p>':status==='error'?'<div class="games-message">Автоматическая загрузка пока не настроена. '+esc(error)+' <a href="'+SOURCE+'" target="_blank" rel="noopener noreferrer">Открыть исходную таблицу</a> (потребуется доступ).</div>':
-   '<p class="games-count">Найдено игр: '+filtered.length+'</p><div class="games-table-wrap"><table class="games-table"><thead><tr><th>Дата</th><th>Игра</th><th>Рейтинг</th><th>Средний балл</th><th>Гайдлайн</th></tr></thead><tbody>'+groupedRows(filtered)+'</tbody></table></div>'+(filtered.length?'':'<p class="games-message">По этому запросу игр нет.</p>'));
+   '<p class="games-count">Найдено игр: '+filtered.length+'</p><div class="games-table-wrap"><table class="games-table"><thead><tr><th>Дата</th><th>Игра</th><th>Рейтинг</th><th>Секретная тема / Раунд с фишечкой</th><th>Средний балл (Москва)</th><th>Гайдлайн</th></tr></thead><tbody>'+groupedRows(filtered)+'</tbody></table></div>'+(filtered.length?'':'<p class="games-message">По этому запросу игр нет.</p>'));
   el.querySelectorAll('[data-games-tab]').forEach(b=>b.addEventListener('click',()=>{tab=b.dataset.gamesTab;render()}));
   const input=el.querySelector('#games-search');if(input){input.addEventListener('input',e=>{query=e.target.value;const pos=e.target.selectionStart;render();const next=root()?.querySelector('#games-search');if(next){next.focus();next.setSelectionRange(pos,pos)}})}
  }
