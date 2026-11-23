@@ -1,6 +1,11 @@
 name: Sync public games schedule
 on:
   workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/sync-games-schedule.yml'
+      - 'scripts/sync_games_schedule.py'
   pull_request:
     paths:
       - 'scripts/sync_games_schedule.py'
