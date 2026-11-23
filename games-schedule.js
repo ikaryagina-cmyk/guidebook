@@ -1,5 +1,5 @@
 /* Section 04 — Games schedule. Public JSON endpoint configured after Apps Script deployment. */
-window.GAMES_SCHEDULE_ENDPOINT = window.GAMES_SCHEDULE_ENDPOINT || '';
+window.GAMES_SCHEDULE_ENDPOINT = "https://script.google.com/macros/s/AKfycbzNf_s5PGYDLs01nuQP4DJ_x0tUi074m2UP0HftOzKMzCTWhlHjXVW7FYuOID1XUhOu/exec";
 window.GamesSchedule = (() => {
  const SOURCE='https://docs.google.com/spreadsheets/d/1fOrA8bzXKTT-aZgFpYD5t2w1DP9x8fAyobsf2GzaDYw/edit';
  const tabs=[['current','График 2026'],['archive','Архив 2020–2025'],['special','Стримы и тематические']];
@@ -16,11 +16,27 @@ window.GamesSchedule = (() => {
   el.querySelectorAll('[data-games-tab]').forEach(b=>b.addEventListener('click',()=>{tab=b.dataset.gamesTab;render()}));
   const input=el.querySelector('#games-search');if(input){input.addEventListener('input',e=>{query=e.target.value;const pos=e.target.selectionStart;render();const next=root()?.querySelector('#games-search');if(next){next.focus();next.setSelectionRange(pos,pos)}})}
  }
- async function load(){
+ function load(){
   const endpoint=window.GAMES_SCHEDULE_ENDPOINT;
-  if(!endpoint){status='error';error='Адрес безопасной выгрузки будет добавлен после настройки Google Apps Script.';render();return}
-  try{const r=await fetch(endpoint,{cache:'no-store'});if(!r.ok)throw Error('HTTP '+r.status);const d=await r.json();if(!Array.isArray(d.rows))throw Error('Неверный формат данных');rows=d.rows;status='ready'}
-  catch(e){status='error';error='Не удалось получить данные: '+e.message}render();
+  if(!endpoint){status='error';error='Адрес расписания не задан.';render();return}
+  status='loading';render();
+  const script=document.createElement('script');
+  let finished=false;
+  const previous=window.GamesScheduleReceive;
+  const timeout=setTimeout(()=>finish(new Error('Превышено время ожидания')),25000);
+  function finish(err,data){
+   if(finished)return;
+   finished=true;clearTimeout(timeout);script.remove();
+   if(previous===undefined)delete window.GamesScheduleReceive;else window.GamesScheduleReceive=previous;
+   if(err){status='error';error=err.message}
+   else if(!data||!Array.isArray(data.rows)){status='error';error='Неверный формат данных'}
+   else {rows=data.rows;status='ready'}
+   render();
+  }
+  window.GamesScheduleReceive=data=>finish(null,data);
+  script.onerror=()=>finish(new Error('Сервер расписания недоступен'));
+  script.src=endpoint+'?callback=GamesScheduleReceive&_='+Date.now();
+  document.head.appendChild(script);
  }
  function mount(){if(!root())return;render();if(status==='loading')load()}
  return {mount};
