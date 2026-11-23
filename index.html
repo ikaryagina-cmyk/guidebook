@@ -595,7 +595,8 @@ html.toc-lock{overflow:hidden}
     const parent = new Map(cleanSections(state.sections).map(s => [s.id, s.parent]));
     return g => !!g.sectionId && (set.has(g.sectionId) || (!!parent.get(g.sectionId) && set.has(parent.get(g.sectionId))));
   }
-  const visibleGuides = () => { const ok = allowedPred(); return state.guides.filter(g => (editorMode() || g.status !== 'draft') && (!ok || ok(g))); };
+  const isLegacyGamesGuide = g => { const sections = cleanSections(state.sections); const games = sections.filter(x => !x.parent)[3]; if (!games) return false; const byId = new Map(sections.map(x => [x.id, x])); const byName = new Map(sections.map(x => [x.name, x])); const section = findSec(g, byId, byName); return !!section && (section.id === games.id || section.parent === games.id); };
+  const visibleGuides = () => { const ok = allowedPred(); return state.guides.filter(g => !isLegacyGamesGuide(g) && (editorMode() || g.status !== 'draft') && (!ok || ok(g))); };
   const byTitle = (a, b) => String(a.title || '').localeCompare(String(b.title || ''), 'ru');
   const ord = g => typeof g.order === 'number' ? g.order : 1e6;
   const byOrder = (a, b) => (ord(a) - ord(b)) || byTitle(a, b);
@@ -640,7 +641,7 @@ html.toc-lock{overflow:hidden}
   const topOf = s => s ? (s.top || s) : null;
   const secLabel = s => s ? (s.num + ' ' + s.name) : '';
   const pathText = s => s ? ((s.top ? s.top.name + ' ' : '') + s.name) : '';
-  const shownTops = () => editorMode() ? TR.tops : TR.tops.filter(t => t.total > 0);
+  const shownTops = () => editorMode() ? TR.tops : TR.tops.filter(t => t.total > 0 || t.num === '04');
   const shownSubs = t => editorMode() ? t.subs : t.subs.filter(s => s.guides.length);
   const branchGuides = s => s.guides.concat(...(s.subs || []).map(x => x.guides));
   function orderedGuides(includeDrafts) {
@@ -990,7 +991,9 @@ html.toc-lock{overflow:hidden}
     }
     h += '<section class="block"><div class="block-head"><h2 class="h2">Разделы</h2>' + navA('sections', 'Все', 'link') + '</div><div class="tiles">' + tops.map(t => {
       let foot;
-      if (ed) {
+      if (t.num === '04') {
+        foot = '<span class="tile-foot"><span class="muted">Расписание игр</span></span>';
+      } else if (ed) {
         const w = branchWork(t);
         foot = '<span class="tile-foot"><span class="muted">' + (t.total ? nGuides(t.total) : 'Пока пусто') + '</span>' + (w ? '<span class="pill warn">В работе: ' + w + '</span>' : '') + '</span>';
       } else {
