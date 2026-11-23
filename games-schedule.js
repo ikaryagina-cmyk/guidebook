@@ -1,4 +1,4 @@
-/* Section 04 — Games schedule. Public JSON endpoint configured after Apps Script deployment. */
+/* Section 04 — Games schedule. Reads pre-generated public JSON from same origin. */
 window.GAMES_SCHEDULE_ENDPOINT = "https://script.google.com/macros/s/AKfycbzNf_s5PGYDLs01nuQP4DJ_x0tUi074m2UP0HftOzKMzCTWhlHjXVW7FYuOID1XUhOu/exec";
 window.GamesSchedule = (() => {
  const SOURCE='https://docs.google.com/spreadsheets/d/1fOrA8bzXKTT-aZgFpYD5t2w1DP9x8fAyobsf2GzaDYw/edit';
@@ -16,27 +16,19 @@ window.GamesSchedule = (() => {
   el.querySelectorAll('[data-games-tab]').forEach(b=>b.addEventListener('click',()=>{tab=b.dataset.gamesTab;render()}));
   const input=el.querySelector('#games-search');if(input){input.addEventListener('input',e=>{query=e.target.value;const pos=e.target.selectionStart;render();const next=root()?.querySelector('#games-search');if(next){next.focus();next.setSelectionRange(pos,pos)}})}
  }
- function load(){
-  const endpoint=window.GAMES_SCHEDULE_ENDPOINT;
-  if(!endpoint){status='error';error='Адрес расписания не задан.';render();return}
+ async function load(){
   status='loading';render();
-  const script=document.createElement('script');
-  let finished=false;
-  const previous=window.GamesScheduleReceive;
-  const timeout=setTimeout(()=>finish(new Error('Превышено время ожидания')),25000);
-  function finish(err,data){
-   if(finished)return;
-   finished=true;clearTimeout(timeout);script.remove();
-   if(previous===undefined)delete window.GamesScheduleReceive;else window.GamesScheduleReceive=previous;
-   if(err){status='error';error=err.message}
-   else if(!data||!Array.isArray(data.rows)){status='error';error='Неверный формат данных'}
-   else {rows=data.rows;status='ready'}
-   render();
+  try{
+   const response=await fetch('./games-schedule-data.json',{cache:'no-store'});
+   if(!response.ok)throw new Error('HTTP '+response.status);
+   const data=await response.json();
+   if(!Array.isArray(data.rows))throw new Error('Неверный формат расписания');
+   rows=data.rows;status='ready';error='';
+  }catch(e){
+   status='error';
+   error='Публичная выгрузка ещё не создана. '+e.message;
   }
-  window.GamesScheduleReceive=data=>finish(null,data);
-  script.onerror=()=>finish(new Error('Сервер расписания недоступен'));
-  script.src=endpoint+'?callback=GamesScheduleReceive&_='+Date.now();
-  document.head.appendChild(script);
+  render();
  }
  function mount(){if(!root())return;render();if(status==='loading')load()}
  return {mount};
