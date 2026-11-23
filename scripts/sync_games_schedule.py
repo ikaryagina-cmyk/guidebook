@@ -17,7 +17,7 @@ if not match:
 data = json.loads(match.group(1))
 if not isinstance(data.get("rows"), list) or len(data["rows"]) < 100:
     raise RuntimeError("Missing or unexpectedly small schedule: refusing to overwrite")
-allowed = ("group", "date", "name", "rating", "score", "guide")
+allowed = ("group", "date", "name", "rating", "score", "secretTheme", "guide")
 rows = []
 for item in data["rows"]:
     if not isinstance(item, dict) or item.get("group") not in ("current", "archive", "special"):
