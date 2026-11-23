@@ -10,13 +10,13 @@ window.GamesSchedule = (() => {
  const monthIndex={'январь':0,'февраль':1,'март':2,'апрель':3,'май':4,'июнь':5,'июль':6,'август':7,'сентябрь':8,'октябрь':9,'ноябрь':10,'декабрь':11};
  function dateInfo(value){
   const raw=String(value||'').trim();
-  const full=raw.match(/^(\\d{1,2})\\.(\\d{1,2})\\.(20\\d{2})/);
+  const full=raw.match(/^(\d{1,2})\.(\d{1,2})\.(20\d{2})/);
   if(full){
    const day=Number(full[1]),month=Number(full[2])-1,year=Number(full[3]);
    const date=new Date(Date.UTC(year,month,day));
    if(date.getUTCFullYear()===year&&date.getUTCMonth()===month&&date.getUTCDate()===day)return {date,monthOnly:false};
   }
-  const monthly=raw.toLowerCase().match(/([а-яё]+)\\s*,?\\s*(20\\d{2})/);
+  const monthly=raw.toLowerCase().match(/([а-яё]+)\s*,?\s*(20\d{2})/);
   if(monthly&&monthIndex[monthly[1]]!==undefined){
    return {date:new Date(Date.UTC(Number(monthly[2]),monthIndex[monthly[1]],1)),monthOnly:true};
   }
