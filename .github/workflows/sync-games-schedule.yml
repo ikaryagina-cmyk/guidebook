@@ -1,0 +1,51 @@
+name: Sync public games schedule
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/sync-games-schedule.yml'
+      - 'scripts/sync_games_schedule.py'
+  pull_request:
+    paths:
+      - 'scripts/sync_games_schedule.py'
+      - '.github/workflows/sync-games-schedule.yml'
+  schedule:
+    - cron: '*/30 * * * *'
+permissions:
+  contents: write
+concurrency:
+  group: games-schedule-sync
+  cancel-in-progress: false
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Download and validate schedule
+        env:
+          SCHEDULE_ENDPOINT: https://script.google.com/macros/s/AKfycbzNf_s5PGYDLs01nuQP4DJ_x0tUi074m2UP0HftOzKMzCTWhlHjXVW7FYuOID1XUhOu/exec
+        run: python scripts/sync_games_schedule.py
+      - name: Upload test schedule artifact
+        if: github.event_name == 'pull_request'
+        uses: actions/upload-artifact@v4
+        with:
+          name: schedule-preview-json
+          path: games-schedule-data.json
+          retention-days: 1
+      - name: Commit updated public data
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add games-schedule-data.json
+          if ! git diff --cached --quiet; then
+            git commit -m "Update public games schedule"
+            if [ "${{ github.event_name }}" = "pull_request" ]; then
+              git push origin "HEAD:${{ github.head_ref }}"
+            else
+              git push
+            fi
+          fi
