@@ -26,3 +26,5 @@ for item in data["rows"]:
 out = {"updatedAt": data.get("updatedAt"), "rows": rows}
 Path("games-schedule-data.json").write_text(json.dumps(out, ensure_ascii=False, separators=(",", ":")) + "\n", encoding="utf-8")
 print("Validated", len(rows), "rows")
+
+# Pull request verification: refresh the preview snapshot before publishing.
