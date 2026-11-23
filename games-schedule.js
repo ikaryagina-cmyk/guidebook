@@ -1,5 +1,4 @@
 /* Section 04 — Games schedule. Reads pre-generated public JSON from same origin. */
-window.GAMES_SCHEDULE_ENDPOINT = "https://script.google.com/macros/s/AKfycbzNf_s5PGYDLs01nuQP4DJ_x0tUi074m2UP0HftOzKMzCTWhlHjXVW7FYuOID1XUhOu/exec";
 window.GamesSchedule = (() => {
  const SOURCE='https://docs.google.com/spreadsheets/d/1fOrA8bzXKTT-aZgFpYD5t2w1DP9x8fAyobsf2GzaDYw/edit';
  const tabs=[['current','График 2026'],['archive','Архив 2020–2025'],['special','Стримы и тематические']];
